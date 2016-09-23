@@ -1,0 +1,173 @@
+#coding=utf-8
+import os
+import requests
+import json
+import re
+import time
+import pymongo
+from lxml import etree
+
+
+def save_data_mongo(shijian):
+    client=pymongo.MongoClient('localhost',27017)
+    zhibo=client['zhibo']
+    renshu_test=zhibo['renshu_test']
+    single={
+        'month':shijian[0],
+        'day':shijian[1],
+        'hour':shijian[2],
+        'minute':shijian[3],
+        'Douyu':shijian[4],
+        'Zhanqi':shijian[5],
+        'xiongmao':shijian[6],
+        'longzhu':shijian[7],
+        'huya':shijian[8]
+        }
+    renshu_test.insert_one(single)
+    
+    
+if __name__=='__main__':
+    while True:
+        time_now=time.localtime(time.time())
+        print 'time'
+        print time_now.tm_mon,time_now.tm_mday,time_now.tm_hour, time_now.tm_min
+        #时间
+        shijian=[]
+        shijian.append(time_now.tm_mon)
+        shijian.append(time_now.tm_mday)
+        shijian.append(time_now.tm_hour)
+        shijian.append(time_now.tm_min)
+
+
+        last_num=10
+
+        page_num=1
+        #平台数据
+        douyu_sum=0
+        zhanqi_sum=0
+        xiongmao_sum=0
+        longzhu_sum=0
+        huya_sum=0
+        #斗鱼TV
+        while last_num>0:#最后一个主播人气大于等于1
+            #douyu
+            douyu_url='https://www.douyu.com/directory/all?page='+str(page_num)+'&isAjax=1'
+            douyu_html=requests.get(douyu_url).text
+            douyu_page=etree.HTML(douyu_html.lower())
+            douyu_viewer=douyu_page.xpath(u'/html/body/li/a/div/p/span[2]')
+            
+            #获取当前页人数
+            for viewer in douyu_viewer:
+                if u'\u4e07' in viewer.text:
+                    #print u'\u4e07' in viewer.text
+                    temp=viewer.text[0:-1].split('.')
+                    if len(temp)==2:
+                        douyu_sum+= int(temp[0])*10000+int(temp[1])*1000#delete 万
+                    elif len(temp)==1:
+                        douyu_sum+= int(temp[0])*10000
+                    else:
+                        pass
+                else:
+                    douyu_sum+= int(viewer.text)
+            #获取当前页最后一个主播的人气值
+            last_host_num=douyu_viewer[-1].text
+            if u'\u4e07' in last_host_num:
+                if len(temp)==2:
+                    temp=last_host_num[0:-1].split('.')
+                    last_num=int(temp[0])*10000+int(temp[1])*1000
+                elif len(temp)==1:
+                    last_num= int(temp[0])*10000
+                else:
+                    pass
+            else:
+                last_num= int(last_host_num)
+            #print '第{}页完成'.format(douyu_page_num)
+            page_num+=1   
+        print douyu_sum,'douyu finished'
+        shijian.append(douyu_sum)
+
+        page_num=1
+
+        #战旗TV
+        for i in range(1,100):
+            zhanqi_url='http://www.zhanqi.tv/api/static/live.hots/30-'+str(i)+'.json'
+            zhanqi_html=requests.get(zhanqi_url).text
+            zhanqi_pattern=re.compile(u',"online":"(.*?)",')
+            zhanqi_dt=zhanqi_pattern.findall(zhanqi_html)
+            if len(zhanqi_dt)==0:
+                break
+            else:
+                for data in zhanqi_dt:
+                    zhanqi_sum+=int(data)
+        print zhanqi_sum, 'zhanqi finished'
+        shijian.append(zhanqi_sum)
+
+        #熊猫tv
+        for i in range(1,100): 
+            xiongmao_url='http://www.panda.tv/live_lists?status=2&order=person_num&pageno='+str(i)+'&pagenum=120'
+            xiongmao_html=requests.get(xiongmao_url).text
+            xiongmao_pattern=re.compile(u'person_num":"(.*?)",')
+            xiongmao_dt=xiongmao_pattern.findall(xiongmao_html)
+            if len(xiongmao_dt)==0:
+                    break
+            else:
+                for data in xiongmao_dt:
+                    xiongmao_sum+=int(data)
+        print xiongmao_sum, 'xiongmao finished'
+        shijian.append(xiongmao_sum)
+
+        #龙珠TV
+        i=0
+        lz_dt=['1']
+        while len(lz_dt)>0:
+            lz_url='http://api.plu.cn/tga/streams?max-results=18&start-index='+str(i)+'&sort-by=views&filter=0&game=0&callback=_callbacks_._36bxu1'
+            lz_html=requests.get(lz_url).text
+            lz_pattern=re.compile(u'"viewers":"(.*?)"}')
+            lz_dt=lz_pattern.findall(lz_html)
+            for data in lz_dt:
+                longzhu_sum+=int(data)
+            i+=18    
+        shijian.append(longzhu_sum)
+        print longzhu_sum,'longzhu finished'
+
+        #虎牙
+        page_num=1
+        huya_dt=['1']
+        while len(huya_dt)>0:
+            huya_url='http://www.huya.com/cache.php?m=Live&do=ajaxAllLiveByPage&page='+str(page_num)+'&pageNum=1'
+            huya_html=requests.get(huya_url).text
+            huya_pattern=re.compile(u'"totalCount":"(.*?)"')
+            huya_dt=huya_pattern.findall(huya_html)
+            for data in huya_dt:
+                huya_sum+=int(data)
+            #print page_num
+            page_num+=1
+        shijian.append(huya_sum)
+        print huya_sum, 'huya finished\n'
+ 
+        save_data_mongo(shijian)#保存数据
+        time.sleep(10*60)
+
+
+   
+
+  
+        
+        
+    
+    
+
+        
+
+
+        
+        
+        
+        
+
+
+  
+            
+        
+    
+    
